@@ -6,7 +6,7 @@ import {
   updateTorrentFileController,
   registerTorrentController
 } from '../controllers/torrentFilesController'
-import { announcePeerController } from '~/controllers/peerController'
+import { announcePeerController, findPiecePeersController } from '~/controllers/peerController'
 import {
   createPeerController,
   deletePeerController,
@@ -34,4 +34,6 @@ peersRouter.delete('/:id', deletePeerController)
 
 routes.post('/register-torrent', registerTorrentController)
 routes.put('/announce', announcePeerController)
+routes.post('/register-peer', createPeerController)
 routes.get('/find-available-peers/:torrentId', findAvailablePeersController)
+routes.get('/find-piece-peers/:torrentId/:pieceHash', findPiecePeersController)

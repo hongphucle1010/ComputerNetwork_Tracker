@@ -9,7 +9,6 @@ TorrentFile schema:
             index: Number,        // Index of the piece
             size: Number,         // Size of the piece
             hash: String,         // Hash for data integrity check
-            peerIds: [ObjectId]   // Array of references to peers that have this piece
         }
     ]
 }
@@ -19,9 +18,15 @@ Peer schema:
     _id: ObjectId,     // Unique identifier for the peer
     ip: String,        // IP address of the peer
     port: Number,      // Port number used by the peer
-    isOnline: Boolean, // Online status of the peer
+    liveTime: Date, // Online status of the peer
     download: Number,  // Total data downloaded by the peer (in bytes)
     upload: Number,    // Total data uploaded by the peer (in bytes)
+    torrents: [
+        { 
+            torrentId: ObjectId, // Reference to the torrent file
+            pieceHashes: [String] // Array of piece hashes that the peer has
+        }
+    ]
 }
 */
 

@@ -1,5 +1,5 @@
 interface Peer {
-  _id: ObjectId
+  _id?: ObjectId
   ip: string
   port: number
   liveTime: Date
