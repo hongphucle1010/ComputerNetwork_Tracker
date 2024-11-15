@@ -24,7 +24,7 @@ Peer schema:
     torrents: [
         { 
             torrentId: ObjectId, // Reference to the torrent file
-            pieceHashes: [String] // Array of piece hashes that the peer has
+            pieceIndexes: [Number] // Array of piece hashes that the peer has
         }
     ]
 }

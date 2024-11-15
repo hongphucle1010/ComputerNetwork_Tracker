@@ -10,5 +10,5 @@ interface Peer {
 
 interface PeerTorrent {
   torrentId: ObjectId
-  pieceHashes: string[]
+  pieceIndexes: number[]
 }

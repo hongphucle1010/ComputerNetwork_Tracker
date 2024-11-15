@@ -27,13 +27,13 @@ export const deletePeerController = expressAsyncHandler(async (req: Request, res
 
 export const findAvailablePeersController = expressAsyncHandler(
   async (req: Request, res: Response, next: NextFunction) => {
-    res.json(await findAvailablePeers(new ObjectId(req.params.torrentId)))
+    res.json(await findAvailablePeers(req.params.torrentId))
   }
 )
 
 export const findPiecePeersController = expressAsyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { torrentId, pieceHash } = req.params
-  const response = await findPiecePeers(new ObjectId(torrentId), pieceHash)
+  const { torrentId, pieceIndex } = req.params
+  const response = await findPiecePeers(new ObjectId(torrentId), parseInt(pieceIndex))
   res.json(response)
 })
 
@@ -50,10 +50,11 @@ export const announcePeerController = expressAsyncHandler(async (req, res, next)
       return
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const formattedTorrents = torrents.map((torrent: any) => {
       return {
         torrentId: new ObjectId(torrent.torrentId as string),
-        pieceHashes: torrent.pieceHashes
+        pieceIndexes: torrent.pieceIndexes
       }
     })
 

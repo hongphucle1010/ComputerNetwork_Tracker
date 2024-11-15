@@ -24,14 +24,14 @@ Peer schema:
     torrents: [
         { 
             torrentId: ObjectId, // Reference to the torrent file
-            pieceHashes: [String] // Array of piece hashes that the peer has
+            pieceIndexes: [Number] // Array of piece hashes that the peer has
         }
     ]
 }
 */
 
 import { ObjectId } from 'mongodb'
-import { PEERS_COLLECTION } from '../../lib/constant'
+import { PEERS_COLLECTION, TORRENT_FILES_COLLECTION } from '../../lib/constant'
 import mongoDb from '../../lib/mongoDbClient'
 
 // CRUD operations for Peer model
@@ -76,46 +76,61 @@ export async function deletePeer(peerId: ObjectId) {
 //   )
 // }
 
-export async function findAvailablePeers(torrentId: ObjectId) {
-  console.log('torrentId', torrentId)
+export async function findAvailablePeers(torrentId: string) {
   const pipeline = [
-    // Step 1: Match peers that have the specified torrent ID and are still live
+    // Step 1: Match the TorrentFile by torrentId
     {
-      $match: {
-        'torrents.torrentId': torrentId, // Convert torrentId to ObjectId
-        liveTime: { $gt: new Date() } // Only peers whose liveTime is in the future
+      $match: { _id: new ObjectId(torrentId) }
+    },
+    // Step 2: Unwind the pieces array
+    {
+      $unwind: '$pieces'
+    },
+    // Step 3: Perform a lookup to find peers for each piece
+    {
+      $lookup: {
+        from: 'peer',
+        let: { pieceIndex: '$pieces.index' },
+        pipeline: [
+          { $unwind: '$torrents' },
+          {
+            $match: {
+              $expr: {
+                $and: [
+                  { $eq: ['$torrents.torrentId', new ObjectId(torrentId)] },
+                  { $in: ['$$pieceIndex', '$torrents.pieceIndexes'] },
+                  { $gt: ['$liveTime', new Date()] }
+                ]
+              }
+            }
+          },
+          { $project: { peerId: '$_id', ip: 1, port: 1, _id: 0 } }
+        ],
+        as: 'peer'
       }
     },
-    // Step 2: Unwind the `torrents` array to access individual torrent objects
-    {
-      $unwind: '$torrents'
-    },
-    // Step 3: Filter to ensure only matching `torrentId` documents remain after unwind
-    {
-      $match: {
-        'torrents.torrentId': torrentId
-      }
-    },
-    // Step 4: Project only necessary fields, including one peer per unique piece hash
-    {
-      $group: {
-        _id: '$torrents.pieceHashes', // Group by piece hash array
-        peer: { $first: '$$ROOT' } // Select the first peer in each group
-      }
-    },
-    // Step 5: Format the output to include only the necessary fields
+    // Step 4: Format the output
     {
       $project: {
-        _id: 0,
-        hash: { $arrayElemAt: ['$_id', 0] }, // Extract the hash from the array
-        ip: '$peer.ip',
-        port: '$peer.port',
-        peerId: '$peer._id'
+        pieceIndex: '$pieces.index',
+        peer: {
+          $cond: {
+            if: { $gt: [{ $size: '$peer' }, 0] }, // If peers array is not empty
+            then: { $arrayElemAt: ['$peer', 0] }, // Take the first peer
+            else: {} // Otherwise, return an empty object
+          }
+        }
       }
+    },
+    // Step 5: Sort by piece index
+    {
+      $sort: { pieceIndex: 1 }
     }
   ]
 
-  return mongoDb.collection(PEERS_COLLECTION).aggregate(pipeline).toArray()
+  const result = await mongoDb.collection(TORRENT_FILES_COLLECTION).aggregate(pipeline).toArray()
+  const peersArray = result.map((item) => item.peer)
+  return peersArray
 }
 // export async function findAvailablePeers(torrentId: ObjectId, peerId: ObjectId) {
 //   return mongoDb
@@ -125,12 +140,12 @@ export async function findAvailablePeers(torrentId: ObjectId) {
 //     .toArray()
 // }
 
-export async function findPiecePeers(torrentId: ObjectId, pieceHash: string) {
+export async function findPiecePeers(torrentId: ObjectId, pieceIndex: number) {
   return mongoDb
     .collection(PEERS_COLLECTION)
     .findOne({
       'torrents.torrentId': new ObjectId(torrentId), // Match the specified torrent ID
-      'torrents.pieceHashes': pieceHash, // Match the specified piece hash
+      'torrents.pieceIndexes': pieceIndex, // Match the specified piece hash
       liveTime: { $gt: new Date() } // Ensure peer is live
     })
     .then((peer) => {
