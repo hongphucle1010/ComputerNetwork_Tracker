@@ -2,14 +2,16 @@
 TorrentFile schema:
 {
     _id: ObjectId,     // Unique identifier for the torrent file
-    name: String,      // Name of the torrent file
-    size: Number,      // Total size of the file in bytes
-    pieces: [          // Array of pieces associated with the torrent
-        {
-            index: Number,        // Index of the piece
-            size: Number,         // Size of the piece
-            hash: String,         // Hash for data integrity check
-        }
+    files: [
+      size: Number,      // Total size of the file in bytes
+      filename: String,  // Name of the file
+      pieces: [          // Array of pieces associated with the torrent
+          {
+              index: Number,        // Index of the piece
+              size: Number,         // Size of the piece
+              hash: String,         // Hash for data integrity check
+          }
+      ]
     ]
 }
 
@@ -24,7 +26,10 @@ Peer schema:
     torrents: [
         { 
             torrentId: ObjectId, // Reference to the torrent file
-            pieceIndexes: [Number] // Array of piece hashes that the peer has
+            files: [
+              filename: String,  // Name of the file
+              pieceIndexes: [Number] // Array of piece hashes that the peer has
+            ]
         }
     ]
 }

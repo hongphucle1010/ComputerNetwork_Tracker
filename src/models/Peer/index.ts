@@ -2,14 +2,16 @@
 TorrentFile schema:
 {
     _id: ObjectId,     // Unique identifier for the torrent file
-    name: String,      // Name of the torrent file
-    size: Number,      // Total size of the file in bytes
-    pieces: [          // Array of pieces associated with the torrent
-        {
-            index: Number,        // Index of the piece
-            size: Number,         // Size of the piece
-            hash: String,         // Hash for data integrity check
-        }
+    files: [
+      size: Number,      // Total size of the file in bytes
+      filename: String,  // Name of the file
+      pieces: [          // Array of pieces associated with the torrent
+          {
+              index: Number,        // Index of the piece
+              size: Number,         // Size of the piece
+              hash: String,         // Hash for data integrity check
+          }
+      ]
     ]
 }
 
@@ -24,7 +26,10 @@ Peer schema:
     torrents: [
         { 
             torrentId: ObjectId, // Reference to the torrent file
-            pieceIndexes: [Number] // Array of piece hashes that the peer has
+            files: [
+              filename: String,  // Name of the file
+              pieceIndexes: [Number] // Array of piece hashes that the peer has
+            ]
         }
     ]
 }
@@ -82,23 +87,32 @@ export async function findAvailablePeers(torrentId: string) {
     {
       $match: { _id: new ObjectId(torrentId) }
     },
-    // Step 2: Unwind the pieces array
+    // Step 2: Unwind the files array
     {
-      $unwind: '$pieces'
+      $unwind: '$files'
     },
-    // Step 3: Perform a lookup to find peers for each piece
+    // Step 3: Unwind the pieces array within each file
+    {
+      $unwind: '$files.pieces'
+    },
+    // Step 4: Perform a lookup to find peers for each piece
     {
       $lookup: {
         from: 'peer',
-        let: { pieceIndex: '$pieces.index' },
+        let: {
+          filename: '$files.filename',
+          pieceIndex: '$files.pieces.index'
+        },
         pipeline: [
           { $unwind: '$torrents' },
+          { $unwind: '$torrents.files' },
           {
             $match: {
               $expr: {
                 $and: [
                   { $eq: ['$torrents.torrentId', new ObjectId(torrentId)] },
-                  { $in: ['$$pieceIndex', '$torrents.pieceIndexes'] },
+                  { $eq: ['$torrents.files.filename', '$$filename'] },
+                  { $in: ['$$pieceIndex', '$torrents.files.pieceIndexes'] },
                   { $gt: ['$liveTime', new Date()] }
                 ]
               }
@@ -109,29 +123,57 @@ export async function findAvailablePeers(torrentId: string) {
         as: 'peer'
       }
     },
-    // Step 4: Format the output
+    // Step 5: Group peers by filename and piece index
     {
-      $project: {
-        pieceIndex: '$pieces.index',
-        peer: {
-          $cond: {
-            if: { $gt: [{ $size: '$peer' }, 0] }, // If peers array is not empty
-            then: { $arrayElemAt: ['$peer', 0] }, // Take the first peer
-            else: {} // Otherwise, return an empty object
+      $group: {
+        _id: {
+          filename: '$files.filename',
+          pieceIndex: '$files.pieces.index'
+        },
+        peer: { $first: { $arrayElemAt: ['$peer', 0] } } // Take the first peer if available
+      }
+    },
+    // Step 6: Reformat the result to group by filename
+    {
+      $group: {
+        _id: '$_id.filename',
+        pieces: {
+          $push: {
+            index: '$_id.pieceIndex',
+            peer: '$peer'
           }
         }
       }
     },
-    // Step 5: Sort by piece index
+    // Step 7: Format the final output
     {
-      $sort: { pieceIndex: 1 }
+      $project: {
+        filename: '$_id',
+        pieces: {
+          $map: {
+            input: '$pieces',
+            as: 'piece',
+            in: {
+              ip: { $ifNull: ['$$piece.peer.ip', null] },
+              port: { $ifNull: ['$$piece.peer.port', null] },
+              peerId: { $ifNull: ['$$piece.peer.peerId', null] }
+            }
+          }
+        }
+      }
     }
   ]
 
+  // Execute the aggregation pipeline
   const result = await mongoDb.collection(TORRENT_FILES_COLLECTION).aggregate(pipeline).toArray()
-  const peersArray = result.map((item) => item.peer)
-  return peersArray
+
+  // Return the formatted result
+  return result.map((item) => ({
+    filename: item.filename,
+    pieces: item.pieces
+  }))
 }
+
 // export async function findAvailablePeers(torrentId: ObjectId, peerId: ObjectId) {
 //   return mongoDb
 //     .collection(PEERS_COLLECTION)
@@ -140,13 +182,18 @@ export async function findAvailablePeers(torrentId: string) {
 //     .toArray()
 // }
 
-export async function findPiecePeers(torrentId: ObjectId, pieceIndex: number) {
+export async function findPiecePeers(torrentId: ObjectId, pieceIndex: number, filename: string) {
   return mongoDb
     .collection(PEERS_COLLECTION)
     .findOne({
-      'torrents.torrentId': new ObjectId(torrentId), // Match the specified torrent ID
-      'torrents.pieceIndexes': pieceIndex, // Match the specified piece hash
-      liveTime: { $gt: new Date() } // Ensure peer is live
+      'torrents.torrentId': torrentId, // Match the specified torrent ID
+      'torrents.files': {
+        $elemMatch: {
+          filename, // Match the specified filename
+          pieceIndexes: pieceIndex // Match the specified piece index
+        }
+      },
+      liveTime: { $gt: new Date() } // Ensure the peer is live
     })
     .then((peer) => {
       if (!peer) return []

@@ -8,7 +8,12 @@ interface Peer {
   torrents: PeerTorrent[]
 }
 
+interface FilePiece {
+  filename: string
+  pieceIndexes: number[]
+}
+
 interface PeerTorrent {
   torrentId: ObjectId
-  pieceIndexes: number[]
+  files: FilePiece[]
 }

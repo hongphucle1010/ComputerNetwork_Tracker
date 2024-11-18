@@ -1,6 +1,10 @@
 interface TorrentFile {
-  name: string
+  files: MyFile[]
+}
+
+interface MyFile {
   size: number
+  filename: string
   pieces: Piece[]
 }
 
