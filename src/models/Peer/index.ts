@@ -185,18 +185,18 @@ export async function findAvailablePeers(torrentId: string) {
 export async function findPiecePeers(torrentId: ObjectId, pieceIndex: number, filename: string) {
   return mongoDb
     .collection(PEERS_COLLECTION)
-    .findOne({
-      'torrents.torrentId': torrentId, // Match the specified torrent ID
+    .find({
+      'torrents.torrentId': torrentId,
       'torrents.files': {
         $elemMatch: {
-          filename, // Match the specified filename
-          pieceIndexes: pieceIndex // Match the specified piece index
+          filename,
+          pieceIndexes: pieceIndex
         }
       },
-      liveTime: { $gt: new Date() } // Ensure the peer is live
+      liveTime: { $gt: new Date() }
     })
-    .then((peer) => {
-      if (!peer) return []
-      return [{ ip: peer.ip, port: peer.port, peerId: peer._id }]
+    .toArray()
+    .then((peers) => {
+      return peers.map((peer) => ({ ip: peer.ip, port: peer.port, peerId: peer._id }))
     })
 }
